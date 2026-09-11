@@ -42,17 +42,23 @@ test: $(TESTS) linker/crt1_ps5.o
 	./linker/test_elf_object linker/test_input.o
 	./linker/test_linker linker/crt1_ps5.o linker/test_input.o
 
-# Each example: compile, link, sign.
-examples: all $(EXAMPLES:main.c=eboot.bin)
+# Each example: compile, link, sign. The GPU one needs the shader containers,
+# so they are built first.
+examples: all shaders $(EXAMPLES:main.c=eboot.bin)
+
+# The GPU programs: the containers and the C headers that hold them.
+shaders:
+	./shaders/build.sh
 
 examples/%/eboot.bin: examples/%/main.c linker/link_real linker/crt1_ps5.o
 	@test -n "$(SHARPPROSPERO)" || { echo "set SHARPPROSPERO to a SharpProspero checkout"; exit 1; }
-	$(PS5_CC) -c -O2 -Wall $< -o examples/$*/main.o
+	$(PS5_CC) -c -O2 -Wall -Ishaders/build $< -o examples/$*/main.o
 	./linker/link_real examples/$*/app.elf linker/crt1_ps5.o examples/$*/main.o
 	cd $(SHARPPROSPERO)/tools/SharpProspero.Bindings.Generator && \
 		dotnet run -c Release -- self --sign --in $(CURDIR)/examples/$*/app.elf --out $(CURDIR)/$@
 
 clean:
+	rm -rf shaders/build
 	rm -f linker/link_real linker/crt1_ps5.o $(TESTS) examples/*/main.o examples/*/app.elf examples/*/eboot.bin
 
-.PHONY: all test examples clean
+.PHONY: all test examples shaders clean

@@ -88,7 +88,8 @@ make examples PS5_PAYLOAD_SDK=/opt/ps5-payload-sdk SHARPPROSPERO=$HOME/SharpPros
 | Built by | `linker/link_real` + `self --sign` | ps5-payload-sdk's `prospero.mk` |
 | Good for | Finished programs, GPU rendering, anything to keep | Trying things out quickly |
 
-`examples/hello_notify` and `examples/pad_input` are titles.
+`examples/hello_notify`, `examples/pad_input` and `examples/gpu_cube` are
+titles.
 `examples/payload/` holds the SDL2 ones, built with their own Makefile:
 
 ```sh
@@ -120,8 +121,10 @@ vertex program is SharpProspero's `mesh_vs.sb`. `agcpack.py` explains the
 container layout it works from, and checks its own work by repacking the
 original byte for byte before it packs anything new.
 
-For a whole renderer built this way - render targets, batching, water, shadows,
-reflections - see the SM64 port's `ps5/` folder.
+`examples/gpu_cube` draws with them: a lit, animated cube, straight from video
+out to the flip, with no engine in between. For a whole renderer built this
+way - render targets, batching, water, shadows, reflections - see the SM64
+port's `ps5/` folder.
 
 ## Writing an application
 
@@ -241,6 +244,7 @@ shaders/           GPU programs: the packer, SharpProspero's containers, an exam
 examples/
   hello_notify/    one notification from a real title
   pad_input/       reads the DualSense
+  gpu_cube/        a lit 3D cube drawn through AGC
   payload/         the SDL2 examples and their Makefile
 ```
 

@@ -24,6 +24,7 @@ mkdir -p "$out"
 
 python3 "$here/tools/agcpack.py" texture-container "$third/mesh_ps.sb" "$out/texture_container.sb"
 python3 "$here/tools/agcpack.py" array "$out/mesh_vs_sb.h" mesh_vs_sb "$third/mesh_vs.sb"
+python3 "$here/tools/agcpack.py" array "$out/mesh_ps_sb.h" mesh_ps_sb "$third/mesh_ps.sb"
 
 for source in "$here"/src/*.s; do
     name=$(basename "$source" .s)
