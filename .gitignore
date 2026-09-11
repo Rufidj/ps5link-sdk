@@ -1,0 +1,14 @@
+linker/link_real
+linker/crt1_ps5.o
+linker/test_nid
+linker/test_catalog
+linker/test_elf_object
+linker/test_linker
+linker/test_input.o
+examples/*/main.o
+examples/*/app.elf
+examples/*/eboot.bin
+*.prx
+__pycache__/
+examples/payload/build/
+shaders/build/

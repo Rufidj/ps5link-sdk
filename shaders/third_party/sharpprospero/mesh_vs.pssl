@@ -1,0 +1,43 @@
+// Built-in mesh vertex program. Reads a vertex from a structured buffer indexed by the vertex id
+// (which the index buffer supplies), transforms the position by the model-view-projection matrix from a
+// constant buffer, and passes the world-space normal and the unpacked colour to the pixel program.
+
+struct Vertex
+{
+	float3 pos;
+	float3 normal;
+	float2 uv;
+	uint color;      // packed A<<24 | R<<16 | G<<8 | B
+};
+
+struct V2P
+{
+	float4 pos : S_POSITION;
+	float3 normal : TEXCOORD0;
+	float4 color : TEXCOORD1;
+};
+
+struct Constants
+{
+	row_major float4x4 mvp;
+	row_major float4x4 model;
+};
+
+ConstantBuffer<Constants> g_constants : register(b0);
+RegularBuffer<Vertex> g_vertices : register(t0);
+
+[CxxSymbol("Shader::gs")]
+V2P main(uint id : S_VERTEX_ID)
+{
+	Vertex v = g_vertices[id];
+	V2P o;
+	o.pos = mul(float4(v.pos, 1.0f), g_constants.mvp);
+	o.normal = mul(float4(v.normal, 0.0f), g_constants.model).xyz;
+	float4 c;
+	c.r = ((v.color >> 16) & 0xffu) / 255.0f;
+	c.g = ((v.color >> 8) & 0xffu) / 255.0f;
+	c.b = (v.color & 0xffu) / 255.0f;
+	c.a = ((v.color >> 24) & 0xffu) / 255.0f;
+	o.color = c;
+	return o;
+}

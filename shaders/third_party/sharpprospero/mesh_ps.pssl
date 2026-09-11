@@ -1,0 +1,17 @@
+// Built-in mesh pixel program. Applies a fixed directional light to the interpolated normal and colour.
+
+struct V2P
+{
+	float4 pos : S_POSITION;
+	float3 normal : TEXCOORD0;
+	float4 color : TEXCOORD1;
+};
+
+[CxxSymbol("Shader::ps")]
+float4 main(V2P i) : S_TARGET_OUTPUT0
+{
+	float3 lightDir = normalize(float3(0.4f, -1.0f, -0.6f));
+	float ndl = saturate(dot(normalize(i.normal), -lightDir));
+	float3 lit = i.color.rgb * (0.25f + 0.75f * ndl);
+	return float4(lit, i.color.a);
+}
