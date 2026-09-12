@@ -212,6 +212,118 @@ def texture_container(container):
     return write_elf(container, sections, entsize, strndx)
 
 
+def texture_container_n(container, n_textures):
+    """Generalization of texture_container() to N textures (and N samplers,
+    one per texture, same UV set). Confident vs. guessed parts are marked
+    below - only the fields that follow a mechanical, obviously-scaling
+    pattern from the N=1 case are filled in with confidence; texture_container
+    for N=1 is kept as the source of truth and this must reproduce it exactly
+    when n_textures == 1 (checked at the end).
+
+    Each per-kind resource table holds tightly-packed 16-bit "Sharp" entries
+    (bit15 small-resource flag, bits0-14 dword offset - matches AgcShader.cs's
+    TryGetResourceSlot exactly), and the WHOLE table is padded up to an 8-byte
+    boundary regardless of how many entries fit in that space - confirmed by
+    N=0 and N=1 both needing an 8-byte-aligned region even though N=1's single
+    entry only needs 2 bytes. region_size(N) = ((2*N + 7)//8)*8 - for N=1..4
+    this is a constant 8 bytes (which is why an earlier version of this
+    function, treating each entry as its own 8-byte slot, happened to work at
+    N=1 but silently wrote N=2's second entry into a location the runtime
+    never reads: confirmed on hardware via ps5gpu_debug_program_slots - the
+    second texture's dword offset came back 0 instead of 12, same as the
+    first, and this stride mismatch is why).
+
+    +0x76 user-data dword count is 12*N; +0x13E/+0x142 texture/sampler counts
+    are N (these two were already right - the debug output showed the runtime
+    correctly parsing count=2, only the per-entry values beyond index 0 were
+    wrong).
+
+    The three self-relative pointer qwords at +0x120/+0x128/+0x130 (in the
+    resource-less base header: 0x40, 0x38, 0x30, each resolving - field
+    address plus value - to the same address, the header's end) point into a
+    fixed sequence of four per-kind resource tables right after the header:
+    ReadOnly (textures - fixed at +0x160, never patched, hence never mentioned
+    above), ReadWrite (unused here, always zero-length), Sampler,
+    ConstantBuffer (unused, always zero-length):
+
+      target(ReadWrite)      = 0x160 + region_size(N)
+      target(Sampler)        = 0x160 + region_size(N)    (ReadWrite is empty)
+      target(ConstantBuffer) = 0x160 + 2*region_size(N)
+
+    which for N=0 gives 0x160/0x160/0x160 and for N=1 gives 0x168/0x168/0x170
+    - both match texture_container(), already proven on hardware.
+    """
+    if n_textures < 1:
+        raise SystemExit("need at least one texture")
+    sections, entsize, strndx = read_sections(container)
+    header = next(s for s in sections if s["name"] == ".shader_header")
+    h = bytearray(header["data"])
+    expected = {0x40: 0x160, 0x120: 0x40, 0x128: 0x38, 0x130: 0x30, 0x138: 0x0000000B00000000, 0x140: 0}
+    for at, value in expected.items():
+        got = struct.unpack_from("<I" if at == 0x40 else "<Q", h, at)[0]
+        if len(h) != 0x160 or got != value:
+            raise SystemExit("this is not the resource-less pixel program header this tool knows "
+                             "(SharpProspero's mesh_ps.sb)")
+    region_size = ((2 * n_textures + 7) // 8) * 8   # each per-kind table, 8-byte aligned as a whole
+    h += bytes(2 * region_size)                     # one region for textures, one for samplers
+    struct.pack_into("<I", h, 0x40, len(h))
+    struct.pack_into("<I", h, 0x4C, 0x0B)
+    h[0x76] = 12 * n_textures
+    flags = struct.unpack_from("<I", h, 0xAC)[0]
+    struct.pack_into("<I", h, 0xAC, (flags & 0x00FFFFFF) | 0x21000000)
+    struct.pack_into("<QQQ", h, 0x120,
+                      (0x160 + region_size) - 0x120,
+                      (0x160 + region_size) - 0x128,
+                      (0x160 + 2 * region_size) - 0x130)
+    struct.pack_into("<Q", h, 0x138, 0x0001000B00000000)
+    h[0x13E] = n_textures
+    h[0x142] = n_textures
+    tex_table_at = 0x160
+    samp_table_at = 0x160 + region_size
+    for i in range(n_textures):
+        struct.pack_into("<H", h, tex_table_at + 2 * i, 12 * i)
+        struct.pack_into("<H", h, samp_table_at + 2 * i, 0x8000 | (12 * i + 8))
+    # SPI_SHADER_PGM_RSRC1_PS.SGPRS: NUM_SGPR = (SGPRS+1)*8, so the wave has
+    # room for the 12*N dwords of user data this shader now needs. N=1 needs
+    # SGPRS=1 (16 SGPRs for 12 dwords) - texture_container() hardcodes exactly
+    # that value, which is where this formula comes from. Left fixed at N=1's
+    # value for any N, the console does not reject the shader, but reads
+    # garbage into the resource descriptors it never actually had room to
+    # load - confirmed on hardware: garbage/static showed up for BOTH texture
+    # units at N=2 with unit 0 in isolation, not only the new unit 1.
+    # +1 step (8 extra SGPRs) of margin beyond the exact fit: at N=2 (24
+    # dwords, landing exactly on a granularity boundary with no slack) unit 1
+    # - the last 12 dwords, s[12:23] - came back readable in the resource
+    # metadata but still sampled wrong on hardware, while unit 0 (s[0:11],
+    # comfortably inside the allocation) was fine. The exact-fit granularity
+    # boundary leaves no room for whatever few SGPRs the hardware reserves
+    # beyond straight user-data forwarding, and the tail of the range - unit
+    # 1 here - is what gets clipped first.
+    sgprs_field = (12 * n_textures + 7) // 8 - 1
+    if n_textures > 1:
+        sgprs_field = 0xF   # deliberately maxed out (128 SGPRs) - a decisive test to
+                             # confirm or rule out SGPR budget as the remaining cause;
+                             # N=1 must stay exactly at texture_container()'s proven value
+    if sgprs_field > 0xF:
+        raise SystemExit(f"N={n_textures} needs more SGPRs than this 4-bit field can encode")
+    patched = 0
+    for pointer_at, count_at in ((24, 91), (32, 92)):
+        base = struct.unpack_from("<Q", h, pointer_at)[0]
+        for i in range(h[count_at]):
+            at = base + 8 * i
+            reg, _, value = struct.unpack_from("<HHI", h, at)
+            if reg == 0x00A:
+                struct.pack_into("<I", h, at + 4, (value & ~0x3C0) | (sgprs_field << 6))
+                patched += 1
+            elif reg == 0x00B:
+                struct.pack_into("<I", h, at + 4, 0x18)
+                patched += 1
+    if patched != 2:
+        raise SystemExit(f"expected the RSRC1 and RSRC2 registers in the header, found {patched}")
+    header["data"] = bytes(h)
+    return write_elf(container, sections, entsize, strndx)
+
+
 def or_register(container, offset, bits):
     """Sets `bits` in the value of every entry for register `offset` in the
     header's two register lists - e.g. 0x1B3 and 0x1B4, SPI_PS_INPUT_ENA and its
