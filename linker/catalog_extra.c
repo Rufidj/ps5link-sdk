@@ -62,6 +62,27 @@ static const StubExport exports_extra_libc[] = {
     { "frexp" }, { "ldexp" }, { "sincos" }, { "sincosf" },
     { "tolower" }, { "rand" }, { "atoi" }, { "atof" }, { "atoll" },
     { "strpbrk" }, { "strcspn" }, { "remove" }, { "__assert" },
+
+    /* Found the same way as the block above, this time linking BennuGD2's
+     * bgdi interpreter core (bgdrtm+bgdi+common) against ps5link - not yet
+     * confirmed on hardware, only that link_real resolves them. getenv is
+     * deliberately NOT here (see the note above - confirmed broken on
+     * hardware); the two bgdi call sites that used it were changed to skip
+     * the call on PS5 instead of relying on a catalog entry. */
+    { "getcwd" }, { "chdir" }, { "toupper" }, { "glob" }, { "globfree" },
+    { "localtime" }, { "realpath" }, { "putchar" }, { "pathconf" },
+    { "perror" }, { "setvbuf" }, { "strtok" }, { "basename" },
+
+    /* Found linking libmod_misc (BennuGD2's misc/string/math/dir/sys module)
+     * against ps5link - not yet confirmed on hardware individually, only
+     * that link_real resolves them. fork/execvp were NOT added here even
+     * though libmod_misc referenced them - that call site (SPAWN()) was
+     * given the same __PROSPERO__ guard PS3/Switch already have (disabled,
+     * returns -1), since fork() on a sandboxed console process is not
+     * expected to behave like a real fork even if the symbol resolved. */
+    { "strftime" }, { "__isinf" }, { "__isfinite" }, { "srand" },
+    { "isalnum" }, { "isalpha" }, { "iscntrl" }, { "isprint" },
+    { "islower" }, { "ispunct" }, { "isupper" }, { "isxdigit" },
 };
 
 const StubEntry ps5link_catalog_extra[] = {
